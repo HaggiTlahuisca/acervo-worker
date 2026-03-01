@@ -78,6 +78,13 @@ VECTOR_ANIO_DESCONOCIDO = os.getenv("VECTOR_SI_ANIO_DESCONOCIDO", "0").strip()
 
 SCJN_TIMEOUT = int(os.getenv("SCJN_TIMEOUT", "20"))
 
+# Orden de procesamiento de registros:
+# "asc"  = del mas antiguo al mas reciente (registros bajos primero)
+# "desc" = del mas reciente al mas antiguo (registros altos primero)
+# Se configura por maquina desde Fly con: fly machines update <ID> -e ORDEN_REGISTRO=desc
+ORDEN_REGISTRO = os.getenv("ORDEN_REGISTRO", "asc").strip().lower()
+_ORDEN = 1 if ORDEN_REGISTRO == "asc" else -1
+
 EMBED_RETRY_ATTEMPTS = int(os.getenv("EMBED_RETRY_ATTEMPTS", "3"))
 EMBED_RETRY_BACKOFF_BASE = float(os.getenv("EMBED_RETRY_BACKOFF_BASE", "1.0"))
 EMBED_RETRY_JITTER_MAX = float(os.getenv("EMBED_RETRY_JITTER_MAX", "0.4"))
@@ -161,11 +168,11 @@ def tomarsiguientecola(cola):
     }
     for filtro, sort in [
         ({"estado": "pendiente", "registro": {"$gte": "600000", "$lte": "999999"}},
-         [("registro", 1)]),
+         [("registro", _ORDEN)]),
         ({"estado": "pendiente", "registro": {"$gte": "1000000"}},
-         [("registro", 1)]),
+         [("registro", _ORDEN)]),
         ({"estado": "pendiente"},
-         [("creadoen", 1)]),
+         [("creadoen", _ORDEN)]),
         ({"estado": "diferido", "next_run_at": {"$lte": ahora}},
          [("next_run_at", 1)]),
     ]:
