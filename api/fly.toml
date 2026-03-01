@@ -1,4 +1,4 @@
-app = "acervo-api"
+app = "acervo-worker"
 primary_region = "lax"
 
 [build]
@@ -8,21 +8,20 @@ primary_region = "lax"
   PYTHONUNBUFFERED = "1"
 
 [processes]
-  app = "uvicorn api.api:app --host 0.0.0.0 --port 8080"
+  worker = "python worker/worker.py"
+
+[deploy]
+  strategy = "immediate"
 
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = false
-  auto_start_machines = true
+  auto_start_machines = false
   min_machines_running = 6
-  processes = ["app"]
+  processes = ["worker"]
 
-[checks]
-  [checks.health]
-    port = 8080
-    type = "http"
-    interval = "15s"
-    timeout = "5s"
-    grace_period = "60s"
-    path = "/health"
+[[vm]]
+  size = "performance-cpu-8x"
+  memory = "6gb"
+  processes = ["worker"]
