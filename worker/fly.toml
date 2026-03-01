@@ -12,4 +12,3 @@ primary_region = "lax"
 
 [deploy]
   strategy = "immediate"
-  
