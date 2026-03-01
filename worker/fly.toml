@@ -12,3 +12,9 @@ primary_region = "lax"
 
 [deploy]
   strategy = "immediate"
+  
+[[vm]]
+  memory = '16gb'
+  cpu_kind = 'shared'
+  cpus = 8
+  memory_mb = 16384
