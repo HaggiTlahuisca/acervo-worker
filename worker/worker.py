@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import random
 import json
@@ -8,27 +9,17 @@ from collections import deque
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import requests
-from dotenv import load_dotenv  # ← IMPORTA AQUÍ ARRIBA
+from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo import UpdateOne, ReturnDocument
 from openai import OpenAI
 
-load_dotenv()  # ← AHORA LLAMA DESPUÉS DEL IMPORT
+# Logs no buffered
+sys.stdout.reconfigure(line_buffering=True)
 
-MONGOURI = os.getenv("MONGO_URI")
-print(f"2. MONGO_URI len: {len(MONGOURI) if MONGOURI else 0}")
+load_dotenv()
 
-OPENAIAPIKEY = os.getenv("OPENAI_API_KEY")
-print(f"3. OPENAI_API_KEY len: {len(OPENAIAPIKEY) if OPENAIAPIKEY else 0}")
-
-if not MONGOURI:
-    print("ERROR: Falta MONGO_URI")
-    exit(1)
-if not OPENAIAPIKEY:
-    print("ERROR: Falta OPENAI_API_KEY")
-    exit(1)
-
-print("4. Variables OK, importando pymongo...")
+print("=== DEBUG: worker.py iniciado ===")
 
 MONGOURI = os.getenv("MONGO_URI")
 DBNAME = os.getenv("MONGODB_DB", "tepantlatia_db")
@@ -36,13 +27,22 @@ OPENAIAPIKEY = os.getenv("OPENAI_API_KEY")
 EMBEDMODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 URLBASETESIS = os.getenv("URL_BASE_TESIS", "https://bicentenario.scjn.gob.mx/repositorio-scjn/api/v1/tesis/")
 
+print(f"=== DEBUG: MONGO_URI len={len(MONGOURI) if MONGOURI else 0}")
+print(f"=== DEBUG: OPENAI_KEY len={len(OPENAIAPIKEY) if OPENAIAPIKEY else 0}")
+
 if not MONGOURI:
-    raise RuntimeError("Falta MONGO_URI.")
+    print("ERROR: Falta MONGO_URI")
+    sys.exit(1)
 if not OPENAIAPIKEY:
-    raise RuntimeError("Falta OPENAI_API_KEY.")
+    print("ERROR: Falta OPENAI_API_KEY")
+    sys.exit(1)
+
+print("=== DEBUG: Variables OK ===")
 
 clientai = OpenAI(api_key=OPENAIAPIKEY)
 http = requests.Session()
+
+print("=== DEBUG: OpenAI y requests OK ===")
 
 # =========================
 # Retries/backoff SCJN
