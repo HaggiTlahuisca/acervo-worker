@@ -43,7 +43,7 @@ MAXERRORESSCJN = int(os.getenv("MAX_ERRORES_SCJN", "40"))
 ESPERAPAUSASCJN = int(os.getenv("ESPERA_PAUSA_SCJN", str(5 * 60)))
 
 # Loop
-ESPERANORMAL = float(os.getenv("ESPERA_NORMAL", "0.35"))
+ESPERANORMAL = float(os.getenv("ESPERA_NORMAL", "0.1"))
 LOCKSTALEMIN = int(os.getenv("LOCK_STALE_MIN", "30"))
 
 # Round-robin: 6 tesis por 1 TFJA
