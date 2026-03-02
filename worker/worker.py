@@ -1,4 +1,13 @@
 import os
+import sys
+
+# Forzar logs inmediatos
+os.environ["PYTHONUNBUFFERED"] = "1"
+sys.stdout.reconfigure(line_buffering=True)
+
+print("=== DEBUG worker.py ARRANCANDO ===")
+sys.stdout.flush()
+
 print("=== DEBUG worker.py iniciado ===")
 
 load_dotenv()
