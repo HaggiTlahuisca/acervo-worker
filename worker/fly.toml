@@ -19,13 +19,13 @@ primary_region = "lax"
 
 [[vm]]
   cpu_kind = "shared"
-  cpus = 8
-  memory_mb = 16384
+  cpus = 2
+  memory_mb = 2048
   processes = ["worker"]
 
-[http_service]
-  internal_port = 8080
-  force_https = false
-  auto_stop_machines = false
-  auto_start_machines = true
+# ── Política de apagado por proceso ───────────────────
+# Esto sí aplica al worker (a diferencia de [http_service])
+[[services]]
   processes = ["worker"]
+  auto_stop_machines = "off"
+  auto_start_machines = false
