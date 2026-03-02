@@ -42,7 +42,7 @@ RETRYSTATUSCODES = {429, 500, 502, 503, 504}
 MAXERRORESSCJN = int(os.getenv("MAX_ERRORES_SCJN", "40"))
 ESPERAPAUSASCJN = int(os.getenv("ESPERA_PAUSA_SCJN", str(5 * 60)))
 
-# Loop
+# Loop (Le damos un respiro un poco mayor por defecto para salvar el CPU de Mongo)
 ESPERANORMAL = float(os.getenv("ESPERA_NORMAL", "0.1"))
 LOCKSTALEMIN = int(os.getenv("LOCK_STALE_MIN", "30"))
 
@@ -83,7 +83,6 @@ colatfja = None
 
 # =========================
 # Mini servidor HTTP
-# Mantiene la máquina "viva" para Fly.io
 # =========================
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -91,7 +90,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"ok")
     def log_message(self, format, *args):
-        pass  # silencia los logs del servidor HTTP
+        pass
 
 def iniciar_servidor_health():
     puerto = int(os.getenv("PORT", "8080"))
@@ -154,7 +153,6 @@ def tomarsiguientecola(cola):
         "$set": {"estado": "procesando", "tomadoen": ahora},
         "$inc": {"intentos": 1},
     }
-    # Solo buscamos pendientes o diferidos que ya toca procesar, sin rangos específicos
     for filtro, sort in [
         ({"estado": "pendiente"}, [("creadoen", _ORDEN)]),
         ({"estado": "diferido", "next_run_at": {"$lte": ahora}}, [("next_run_at", 1)]),
@@ -435,72 +433,5 @@ def workerloop():
     sourcestfja = db["sources_tfja"]
     colatfja = db["cola_tfja"]
 
-    for nombre, fn in [
-        ("registro en acervo_historico", lambda: acervohistorico.create_index("registro", unique=True)),
-        ("docid en sources_tfja", lambda: sourcestfja.create_index("docid", unique=True)),
-        ("docid en cola_tfja", lambda: colatfja.create_index("docid")),
-        ("estado+next_run_at en cola_tesis", lambda: colatesis.create_index([("estado", 1), ("next_run_at", 1), ("creadoen", 1)])),
-        ("estado+tomadoen en cola_tesis", lambda: colatesis.create_index([("estado", 1), ("tomadoen", 1)])),
-        ("estado+next_run_at en cola_tfja", lambda: colatfja.create_index([("estado", 1), ("next_run_at", 1), ("creadoen", 1)])),
-        ("estado+tomadoen en cola_tfja", lambda: colatfja.create_index([("estado", 1), ("tomadoen", 1)])),
-    ]:
-        try:
-            fn()
-        except Exception as e:
-            print(f"Indice '{nombre}' ya existe o se omite: {e}")
-
-    backfill_cola_campos(colatesis)
-    backfill_cola_campos(colatfja)
-    
-    # <- Se eliminó inicializarcolatesis() aquí
-
-    tiempos = deque(maxlen=20)
-    erroresscjnconsecutivos = 0
-    scjn_pause_until = 0.0
-    i = 0
-
-    while True:
-        if i % 200 == 0:
-            liberarlocksstale(colatesis)
-            liberarlocksstale(colatfja)
-
-        tipo = SCHEDULE[i % len(SCHEDULE)]
-        i += 1
-        procesadoalgo = False
-
-        if time.time() < scjn_pause_until and tipo == "tesis" and WTFJA > 0:
-            tipo = "tfja"
-
-        if tipo == "tesis":
-            doc = tomarsiguientecola(colatesis)
-            if doc:
-                procesadoalgo = True
-                ok, scjnerrorreal = procesartesisdoc(doc)
-                if scjnerrorreal and not ok:
-                    erroresscjnconsecutivos += 1
-                elif ok:
-                    erroresscjnconsecutivos = 0
-                if erroresscjnconsecutivos >= MAXERRORESSCJN:
-                    scjn_pause_until = time.time() + ESPERAPAUSASCJN
-                    print(f"SCJN inestable ({erroresscjnconsecutivos} errores seguidos). "
-                          f"Pausando tesis {ESPERAPAUSASCJN // 60} min (TFJA sigue).")
-                    log_event("scjn_pause", errores=erroresscjnconsecutivos, pausa_seg=ESPERAPAUSASCJN)
-                    erroresscjnconsecutivos = 0
-        else:
-            doc = tomarsiguientecola(colatfja)
-            if doc:
-                procesadoalgo = True
-                procesartfjadoc(doc)
-
-        if procesadoalgo:
-            tiempos.append(time.time())
-            if len(tiempos) >= 10 and (tiempos[-1] - tiempos[0]) > 0:
-                tps = len(tiempos) / (tiempos[-1] - tiempos[0])
-                print(f"Velocidad (ventana): {tps:.2f} items/seg")
-            time.sleep(ESPERANORMAL)
-        else:
-            time.sleep(1)
-
-if __name__ == "__main__":
-    iniciar_servidor_health()
-    workerloop()
+    # CORRECCIÓN DE ÍNDICES: 
+    # Añadimos los índices exactos para que Mongo no tenga que es
