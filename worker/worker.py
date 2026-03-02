@@ -1,17 +1,19 @@
 import os
-import sys
+import time
+import random
+import json
+import threading
+from datetime import datetime, timedelta
+from collections import deque
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Forzar logs inmediatos
-os.environ["PYTHONUNBUFFERED"] = "1"
-sys.stdout.reconfigure(line_buffering=True)
+import requests
+from dotenv import load_dotenv  # ← IMPORTA AQUÍ ARRIBA
+from pymongo import MongoClient
+from pymongo import UpdateOne, ReturnDocument
+from openai import OpenAI
 
-print("=== DEBUG worker.py ARRANCANDO ===")
-sys.stdout.flush()
-
-print("=== DEBUG worker.py iniciado ===")
-
-load_dotenv()
-print("1. dotenv cargado")
+load_dotenv()  # ← AHORA LLAMA DESPUÉS DEL IMPORT
 
 MONGOURI = os.getenv("MONGO_URI")
 print(f"2. MONGO_URI len: {len(MONGOURI) if MONGOURI else 0}")
