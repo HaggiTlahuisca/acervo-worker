@@ -13,12 +13,9 @@ primary_region = "lax"
 [deploy]
   strategy = "immediate"
 
-[metrics]
-  port = 9091
-  path = "/metrics"
-
 [[vm]]
-  cpu_kind = "shared"
-  cpus = 4
-  memory_mb = 2048
-  processes = ["worker"]
+  size = "shared-cpu-4x"
+  memory = "2048mb"
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 20
