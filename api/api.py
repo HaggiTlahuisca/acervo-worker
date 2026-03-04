@@ -4,6 +4,8 @@ import threading
 from datetime import datetime
 
 import httpx
+import jwt
+from jwt import PyJWKClient
 from pymongo.mongo_client import MongoClient
 from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -16,33 +18,33 @@ from dotenv import load_dotenv
 # ============================
 load_dotenv()
 
-CLERK_SECRET_KEY    = os.getenv("CLERK_SECRET_KEY")
-CLERK_JWKS_URL      = "https://api.clerk.com/v1/jwks"
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
+CLERK_JWKS_URL   = os.getenv("CLERK_JWKS_URL")   # lo agregas al .env
 
 client_mongo = None
 db           = None
 coleccion    = None
 cola         = None
 
-security = HTTPBearer()
+security   = HTTPBearer()
+jwks_client = PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
 
 def conectar_mongo():
     while True:
         try:
             client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
             client.server_info()
-            print("🔗 Conectado a MongoDB")
+            print("Conectado a MongoDB")
             return client
         except Exception as e:
-            print(f"⚠️ Error conectando a MongoDB, reintentando: {e}")
+            print(f"Error conectando a MongoDB, reintentando: {e}")
             time.sleep(5)
 
 app = FastAPI(title="TepantlatAI API")
 
-# CORS — permite que el frontend (web) se comunique con la API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # luego restringimos al dominio real
+    allow_origins=["*"],   # restringir al dominio real cuando se lance
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,7 +59,7 @@ def conectar_en_background():
     db           = client_mongo["tepantlatia_db"]
     coleccion    = db["acervo_historico"]
     cola         = db["cola_tesis"]
-    print("🚀 API conectada a MongoDB.")
+    print("API conectada a MongoDB.")
 
 @app.on_event("startup")
 def startup_event():
@@ -69,29 +71,30 @@ def startup_event():
 # ============================
 def verificar_sesion(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
-    Verifica el token JWT que envía Clerk desde el frontend.
-    Si no es válido, rechaza la petición con 401.
+    Verifica el JWT firmado por Clerk usando sus claves públicas (JWKS).
     """
     token = credentials.credentials
     try:
-        headers = {"Authorization": f"Bearer {CLERK_SECRET_KEY}"}
-        resp = httpx.get(
-            f"https://api.clerk.com/v1/tokens/{token}/verify",
-            headers=headers,
-            timeout=5,
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_exp": True},
         )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Sesión inválida o expirada.")
-        return resp.json()   # contiene user_id y datos del usuario
-    except httpx.RequestError:
-        raise HTTPException(status_code=503, detail="No se pudo verificar la sesión.")
+        return payload   # contiene sub (user_id), email, etc.
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado.")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Token inválido: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Error verificando sesión: {e}")
 
 # ============================
 # ENDPOINTS PÚBLICOS
 # ============================
 @app.get("/health")
 def health_check():
-    """Siempre devuelve 200. Fly.io usa este endpoint para el health check."""
     return JSONResponse({"status": "ok"})
 
 @app.get("/", response_class=HTMLResponse)
@@ -121,26 +124,31 @@ def dashboard(
     )
     filas = ""
     for d in ultimos:
-        filas += f"<tr><td>{d.get('no_registro','')}</td><td>{d.get('rubro','')[:80]}</td><td>{d.get('epoca','')}</td><td>{d.get('materia','')}</td></tr>"
+        filas += (
+            f"<tr><td>{d.get('registro','')}</td>"
+            f"<td>{d.get('rubro','')[:80]}</td>"
+            f"<td>{d.get('epoca','')}</td>"
+            f"<td>{d.get('materia','')}</td></tr>"
+        )
 
     html = f"""
     <html><head><title>TepantlatAI Dashboard</title></head>
     <body>
     <h2>TepantlatAI — Estado del sistema</h2>
     <p>Total: {total} | Pendientes: {pendientes} | Procesando: {procesando} | Completados: {completados} | Errores: {errores}</p>
-    <table border='1'><tr><th>Registro</th><th>Rubro</th><th>Época</th><th>Materia</th></tr>
-    {filas}
+    <table border='1'>
+      <tr><th>Registro</th><th>Rubro</th><th>Época</th><th>Materia</th></tr>
+      {filas}
     </table>
     </body></html>
     """
     return HTMLResponse(html)
 
 # ============================
-# ENDPOINTS PRIVADOS (requieren sesión)
+# ENDPOINTS PRIVADOS (requieren sesión Clerk)
 # ============================
 @app.get("/yo")
 def mi_perfil(sesion: dict = Depends(verificar_sesion)):
-    """Devuelve los datos del usuario autenticado."""
     return {
         "user_id": sesion.get("sub"),
         "email":   sesion.get("email"),
@@ -149,13 +157,9 @@ def mi_perfil(sesion: dict = Depends(verificar_sesion)):
 
 @app.get("/buscar")
 def buscar(
-    q:      str            = Query(..., description="Pregunta o búsqueda"),
-    sesion: dict           = Depends(verificar_sesion),
+    q:      str  = Query(..., description="Pregunta o búsqueda"),
+    sesion: dict = Depends(verificar_sesion),
 ):
-    """
-    Endpoint de búsqueda semántica (se completará en la siguiente fase).
-    Requiere sesión activa de Clerk.
-    """
     return {
         "query":   q,
         "user_id": sesion.get("sub"),
